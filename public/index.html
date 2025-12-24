@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>紀錄</title>
+    <title>台股投資組合紀錄 (個人雲端版)</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Vue 3 -->
@@ -71,7 +71,15 @@
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div class="flex items-center justify-between h-16">
             <div class="flex items-center gap-3">
-              <span class="font-bold text-xl tracking-wide">台股投資紀錄</span>
+              <i class="fa-solid fa-cloud text-2xl text-blue-400"></i>
+              <span class="font-bold text-xl tracking-wide"
+                >台股投資紀錄 (個人雲端版)</span
+              >
+            </div>
+            <div class="flex items-center gap-2 text-xs">
+              <!-- 狀態顯示 (除錯用) -->
+              <span v-if="user" class="text-green-400">已連線</span>
+              <span v-else class="text-yellow-500">連線中...</span>
             </div>
           </div>
         </div>
@@ -84,7 +92,9 @@
           <div
             class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-blue-500"
           >
-            <p class="text-sm text-gray-500 font-medium mb-1">庫存市值</p>
+            <p class="text-sm text-gray-500 font-medium mb-1">
+              庫存市值 (Market Value)
+            </p>
             <h2 class="text-2xl font-bold text-slate-800">
               {{ formatCurrency(totalMarketValue) }}
             </h2>
@@ -93,7 +103,9 @@
           <div
             class="bg-white rounded-xl shadow-sm p-5 border-l-4 border-purple-500"
           >
-            <p class="text-sm text-gray-500 font-medium mb-1">已實現損益</p>
+            <p class="text-sm text-gray-500 font-medium mb-1">
+              已實現損益 (Realized)
+            </p>
             <h2
               class="text-2xl font-bold"
               :class="getColorClass(totalRealizedProfit)"
@@ -107,7 +119,9 @@
             class="bg-white rounded-xl shadow-sm p-5 border-l-4"
             :class="totalUnrealizedProfit >= 0 ? 'border-up-red' : 'border-down-green'"
           >
-            <p class="text-sm text-gray-500 font-medium mb-1">未實現損益</p>
+            <p class="text-sm text-gray-500 font-medium mb-1">
+              未實現損益 (Unrealized)
+            </p>
             <h2
               class="text-2xl font-bold"
               :class="getColorClass(totalUnrealizedProfit)"
@@ -121,7 +135,9 @@
             class="bg-white rounded-xl shadow-sm p-5 border-l-4"
             :class="totalReturnRate >= 0 ? 'border-up-red' : 'border-down-green'"
           >
-            <p class="text-sm text-gray-500 font-medium mb-1">持倉報酬率</p>
+            <p class="text-sm text-gray-500 font-medium mb-1">
+              持倉報酬率 (Return %)
+            </p>
             <h2
               class="text-2xl font-bold"
               :class="getColorClass(totalReturnRate)"
@@ -695,8 +711,10 @@
           // --- Initialization Logic ---
           const configError = ref(false);
           let app, auth, db;
-          const appId =
-            typeof __app_id !== "undefined" ? __app_id : "default-app-id";
+
+          // 判斷是否為 Canvas 預覽環境
+          const isCanvas = typeof __app_id !== "undefined";
+          const appId = isCanvas ? __app_id : "default-app-id";
 
           try {
             // 檢查是否已填入 Config
@@ -741,20 +759,43 @@
             type: "buy",
           });
 
+          // --- Path Logic ---
+          const getDocRef = () => {
+            if (!user.value || !db) return null;
+
+            if (isCanvas) {
+              // Canvas 環境：使用指定安全路徑
+              return doc(
+                db,
+                "artifacts",
+                appId,
+                "users",
+                user.value.uid,
+                "data",
+                "portfolio"
+              );
+            } else {
+              // 正式/個人環境：使用標準路徑 (更容易設定權限)
+              // 路徑: users/{uid}/stockData/portfolio
+              return doc(db, "users", user.value.uid, "stockData", "portfolio");
+            }
+          };
+
           // --- Auth & Data Listeners ---
           onMounted(async () => {
             if (configError.value) return;
 
-            // 1. Auth Init (Anonymous)
+            // 1. Auth Init
             try {
-              // 如果有自訂 Token (Canvas 環境)，則優先使用，以解決 Canvas 權限問題
+              // 如果有自訂 Token (Canvas 環境)，則優先使用
               if (
+                isCanvas &&
                 typeof __initial_auth_token !== "undefined" &&
                 __initial_auth_token
               ) {
                 await signInWithCustomToken(auth, __initial_auth_token);
               } else {
-                // 否則使用匿名登入 (Standalone 模式)
+                // 否則使用匿名登入 (Standalone/Formal 模式)
                 await signInAnonymously(auth);
               }
             } catch (error) {
@@ -771,19 +812,8 @@
 
           // 3. Data Listener (Wait for User)
           watchEffect((onCleanup) => {
-            if (!user.value || !db) return;
-
-            // 修正：使用符合 Canvas 安全規則的路徑 artifacts/{appId}/users/{uid}/data/portfolio
-            // 這路徑在 Standalone 模式下也同樣適用 (只是層級較深)，但能確保兩邊都通
-            const docRef = doc(
-              db,
-              "artifacts",
-              appId,
-              "users",
-              user.value.uid,
-              "data",
-              "portfolio"
-            );
+            const docRef = getDocRef();
+            if (!docRef) return;
 
             const unsubscribe = onSnapshot(
               docRef,
@@ -791,7 +821,7 @@
                 if (docSnap.exists()) {
                   portfolio.value = docSnap.data().list || [];
                 } else {
-                  // 嘗試遷移 LocalStorage
+                  // 遷移: 嘗試從 LocalStorage 恢復舊資料
                   const localData = localStorage.getItem(
                     "tw_stock_portfolio_v2"
                   );
@@ -799,33 +829,38 @@
                     try {
                       const parsed = JSON.parse(localData);
                       portfolio.value = parsed;
-                      setDoc(docRef, { list: parsed });
+                      // 自動寫入新路徑
+                      setDoc(docRef, { list: parsed }).catch((e) =>
+                        console.log("Migration save failed:", e)
+                      );
                     } catch (e) {}
                   }
                 }
               },
-              (err) => console.error(err)
+              (err) => console.error("Snapshot Error:", err)
             );
 
             onCleanup(() => unsubscribe());
           });
 
           const saveToFirestore = async () => {
-            if (!user.value || !db) return;
+            const docRef = getDocRef();
+            if (!docRef) return;
+
             try {
-              const docRef = doc(
-                db,
-                "artifacts",
-                appId,
-                "users",
-                user.value.uid,
-                "data",
-                "portfolio"
-              );
               await setDoc(docRef, { list: portfolio.value });
             } catch (e) {
               console.error("Save Error:", e);
-              alert("儲存失敗");
+              // 顯示更詳細的錯誤訊息給使用者
+              if (e.code === "permission-denied") {
+                alert(
+                  "儲存失敗：權限不足。\n請檢查 Firebase Console -> Firestore Database -> Rules (安全規則)，確認已允許寫入 users 集合。"
+                );
+              } else {
+                alert(
+                  `儲存失敗 (${e.code})：請檢查 console log 獲取更多資訊。`
+                );
+              }
             }
           };
 
