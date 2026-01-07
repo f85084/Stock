@@ -1070,10 +1070,33 @@
               `https://corsproxy.io/?` + encodeURIComponent(targetUrl);
             try {
               const res = await fetch(proxyUrl);
-              const data = await res.json();
-              return data.msgArray || [];
+              const text = await res.text();
+              try {
+                const data = JSON.parse(text);
+                // Debug: log the raw response for troubleshooting
+                console.debug(
+                  "[fetchTwseData] targetUrl=",
+                  targetUrl,
+                  "proxyUrl=",
+                  proxyUrl,
+                  "data=",
+                  data
+                );
+                return data.msgArray || [];
+              } catch (jsonErr) {
+                console.error(
+                  "[fetchTwseData] JSON 解析失敗，回傳文本：",
+                  text
+                );
+                return [];
+              }
             } catch (e) {
-              console.error(e);
+              console.error(
+                "[fetchTwseData] fetch 失敗",
+                e,
+                "proxyUrl=",
+                proxyUrl
+              );
               return [];
             }
           };
@@ -1086,7 +1109,20 @@
 
             const query = `tse_${code}.tw|otc_${code}.tw`;
             const results = await fetchTwseData(query);
-            const validStock = results.find((s) => s.c === code);
+
+            if (!results || results.length === 0) {
+              console.warn("[searchStock] 無資料回傳", { query, results });
+              searchMsg.value = {
+                type: "error",
+                text: "查詢失敗：無回應或網路/Proxy 問題（請查看 console 以取得更多資訊）",
+              };
+              isSearching.value = false;
+              return;
+            }
+
+            const validStock = results.find(
+              (s) => s.c === code || s.c === code.replace(/^0+/, "")
+            );
 
             if (validStock) {
               form.value.name = validStock.n;
@@ -1102,6 +1138,11 @@
                 text: `找到: ${validStock.n}`,
               };
             } else {
+              console.info("[searchStock] 查無符合代碼", {
+                code,
+                query,
+                results,
+              });
               searchMsg.value = {
                 type: "error",
                 text: "找不到此股票，請確認代號是否正確 (上市/上櫃)",
