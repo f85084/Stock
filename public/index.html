@@ -73,7 +73,7 @@
             <div class="flex items-center gap-3">
               <i class="fa-solid fa-cloud text-2xl text-blue-400"></i>
               <span class="font-bold text-xl tracking-wide"
-                >台股投資紀錄</span
+                >台股投資紀錄 (個人雲端版)</span
               >
             </div>
             <div class="flex items-center gap-2 text-xs">
@@ -1065,40 +1065,40 @@
 
           // --- API Logic ---
           const fetchTwseData = async (queryIds) => {
-            const targetUrl = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${queryIds}&json=1&delay=0`;
-            const proxyUrl =
-              `https://corsproxy.io/?` + encodeURIComponent(targetUrl);
-            try {
-              const res = await fetch(proxyUrl);
-              const text = await res.text();
+            // 產生時間戳記以防止快取
+            const timestamp = Date.now();
+            const targetUrl = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${queryIds}&json=1&delay=0&_=${timestamp}`;
+
+            // 定義可用的 Proxy 列表 (優先順序: allorigins -> corsproxy.io)
+            const proxies = [
+              // AllOrigins (Raw 模式)
+              (url) =>
+                `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+              // CORS Proxy IO (作為備用)
+              (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+            ];
+
+            for (const formatUrl of proxies) {
               try {
-                const data = JSON.parse(text);
-                // Debug: log the raw response for troubleshooting
-                console.debug(
-                  "[fetchTwseData] targetUrl=",
-                  targetUrl,
-                  "proxyUrl=",
-                  proxyUrl,
-                  "data=",
-                  data
-                );
-                return data.msgArray || [];
-              } catch (jsonErr) {
-                console.error(
-                  "[fetchTwseData] JSON 解析失敗，回傳文本：",
-                  text
-                );
-                return [];
+                const url = formatUrl(targetUrl);
+                const res = await fetch(url);
+
+                if (!res.ok)
+                  throw new Error(`HTTP error! status: ${res.status}`);
+
+                // 嘗試解析 JSON
+                const data = await res.json();
+
+                // 檢查資料結構是否正確
+                if (data.msgArray) return data.msgArray;
+              } catch (e) {
+                console.warn("Proxy failed, trying next...", e);
+                // 繼續嘗試下一個 Proxy
               }
-            } catch (e) {
-              console.error(
-                "[fetchTwseData] fetch 失敗",
-                e,
-                "proxyUrl=",
-                proxyUrl
-              );
-              return [];
             }
+
+            console.error("All proxies failed to fetch TWSE data");
+            return [];
           };
 
           const searchStock = async () => {
@@ -1110,19 +1110,17 @@
             const query = `tse_${code}.tw|otc_${code}.tw`;
             const results = await fetchTwseData(query);
 
+            // 檢查是否成功抓到資料
             if (!results || results.length === 0) {
-              console.warn("[searchStock] 無資料回傳", { query, results });
               searchMsg.value = {
                 type: "error",
-                text: "查詢失敗：無回應或網路/Proxy 問題（請查看 console 以取得更多資訊）",
+                text: "網路連線異常或無法連線至證交所，請稍後再試。",
               };
               isSearching.value = false;
               return;
             }
 
-            const validStock = results.find(
-              (s) => s.c === code || s.c === code.replace(/^0+/, "")
-            );
+            const validStock = results.find((s) => s.c === code);
 
             if (validStock) {
               form.value.name = validStock.n;
@@ -1138,11 +1136,6 @@
                 text: `找到: ${validStock.n}`,
               };
             } else {
-              console.info("[searchStock] 查無符合代碼", {
-                code,
-                query,
-                results,
-              });
               searchMsg.value = {
                 type: "error",
                 text: "找不到此股票，請確認代號是否正確 (上市/上櫃)",
@@ -1158,21 +1151,25 @@
             const queries = portfolio.value.map((s) => s.fullSymbol).join("|");
             const results = await fetchTwseData(queries);
 
-            results.forEach((res) => {
-              const stock = portfolio.value.find((s) => s.code === res.c);
-              if (stock) {
-                const price = parseFloat(res.z !== "-" ? res.z : res.y);
-                const yesterday = parseFloat(res.y);
-                stock.currentPrice = price;
-                if (yesterday > 0)
-                  stock.changeRate = (
-                    ((price - yesterday) / yesterday) *
-                    100
-                  ).toFixed(2);
-              }
-            });
+            if (results && results.length > 0) {
+              results.forEach((res) => {
+                const stock = portfolio.value.find((s) => s.code === res.c);
+                if (stock) {
+                  const price = parseFloat(res.z !== "-" ? res.z : res.y);
+                  const yesterday = parseFloat(res.y);
+                  stock.currentPrice = price;
+                  if (yesterday > 0)
+                    stock.changeRate = (
+                      ((price - yesterday) / yesterday) *
+                      100
+                    ).toFixed(2);
+                }
+              });
 
-            saveToFirestore();
+              saveToFirestore();
+            } else {
+              console.warn("Refresh failed: No data received");
+            }
             isLoading.value = false;
           };
 
