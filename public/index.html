@@ -843,6 +843,124 @@
             onCleanup(() => unsubscribe());
           });
 
+          // --- Debug Panel (mobile-friendly) ---
+          // 在 URL 加上 ?debug=1 時會顯示一個底部面板，顯示 UA、auth 狀態、REST fetch 結果與 console 錯誤
+          try {
+            const debugEnabled =
+              new URLSearchParams(window.location.search).get("debug") === "1";
+
+            if (debugEnabled) {
+              const dbg = document.createElement("div");
+              dbg.id = "debug-panel";
+              dbg.style =
+                "position:fixed;bottom:0;left:0;right:0;max-height:40vh;overflow:auto;background:rgba(17,24,39,0.95);color:#e6eef8;padding:10px;font-size:12px;z-index:99999;border-top:3px solid #2563eb;line-height:1.4";
+              const hdr = document.createElement("div");
+              hdr.style =
+                "display:flex;justify-content:space-between;align-items:center;margin-bottom:6px";
+              hdr.innerHTML = `<strong style="font-size:13px">DEBUG PANEL</strong><button id="dbg-close" style="background:#f8fafc;color:#111;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:12px">Close</button>`;
+              dbg.appendChild(hdr);
+              const content = document.createElement("div");
+              content.id = "debug-content";
+              dbg.appendChild(content);
+              document.body.appendChild(dbg);
+              document
+                .getElementById("dbg-close")
+                .addEventListener("click", () => dbg.remove());
+
+              const append = (txt) => {
+                const el = document.getElementById("debug-content");
+                const row = document.createElement("div");
+                row.textContent = `${new Date().toLocaleTimeString()} — ${txt}`;
+                el.appendChild(row);
+                el.scrollTop = el.scrollHeight;
+              };
+
+              // 顯示 UA 與基本資訊
+              append("UserAgent: " + navigator.userAgent);
+              append("Location: " + window.location.href);
+              append(
+                "Viewport: " + window.innerWidth + "x" + window.innerHeight
+              );
+
+              // 將 console error/warn 顯示到面板
+              const _err = console.error;
+              console.error = (...args) => {
+                _err(...args);
+                append(
+                  "ERROR: " +
+                    args
+                      .map((a) =>
+                        typeof a === "object" ? JSON.stringify(a) : a
+                      )
+                      .join(" ")
+                );
+              };
+              const _warn = console.warn;
+              console.warn = (...args) => {
+                _warn(...args);
+                append(
+                  "WARN: " +
+                    args
+                      .map((a) =>
+                        typeof a === "object" ? JSON.stringify(a) : a
+                      )
+                      .join(" ")
+                );
+              };
+
+              // 顯示目前 auth 狀態與嘗試用 REST API 讀取文件（可顯示 permission 問題）
+              try {
+                onAuthStateChanged(auth, async (currentUser) => {
+                  append(
+                    "onAuthStateChanged: " +
+                      (currentUser ? currentUser.uid : "null")
+                  );
+                  if (currentUser) {
+                    try {
+                      const token = await currentUser.getIdToken();
+                      append("idToken (prefix): " + token.slice(0, 20) + "...");
+
+                      const projectId = firebaseConfig.projectId || "";
+                      if (projectId && currentUser.uid) {
+                        const docPath = `projects/${projectId}/databases/(default)/documents/users/${currentUser.uid}/stockData/portfolio`;
+                        try {
+                          const r = await fetch(
+                            `https://firestore.googleapis.com/v1/${docPath}`,
+                            {
+                              headers: { Authorization: "Bearer " + token },
+                            }
+                          );
+                          append("Firestore REST status: " + r.status);
+                          const txt = await r.text();
+                          append("Firestore REST body: " + txt);
+                        } catch (e) {
+                          append("Firestore REST fetch failed: " + e.message);
+                        }
+                      } else {
+                        append(
+                          "Cannot form Firestore REST path (missing projectId or uid)"
+                        );
+                      }
+                    } catch (e) {
+                      append("getIdToken failed: " + e.message);
+                    }
+                  }
+                });
+              } catch (e) {
+                append("Auth debug failed: " + e.message);
+              }
+
+              // 測試外部 TWSE 代理能否從手機訪問
+              fetch(
+                "https://api.allorigins.win/raw?url=https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=2330.tw&json=1&delay=0"
+              )
+                .then((r) => append("TWSE proxy test status: " + r.status))
+                .catch((e) => append("TWSE proxy test failed: " + e.message));
+            }
+          } catch (e) {
+            console.warn("Failed to init debug panel", e);
+          }
+
           const saveToFirestore = async () => {
             const docRef = getDocRef();
             if (!docRef) return;
