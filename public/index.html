@@ -80,6 +80,39 @@
               <!-- 狀態顯示 (除錯用) -->
               <span v-if="user" class="text-green-400">已連線</span>
               <span v-else class="text-yellow-500">連線中...</span>
+
+              <!-- Auth buttons -->
+              <div class="ml-4 flex items-center gap-2">
+                <button
+                  v-if="!user"
+                  @click="signInWithGoogle"
+                  class="bg-white text-slate-800 px-3 py-1 rounded text-xs shadow"
+                >
+                  登入 (Google)
+                </button>
+
+                <template v-if="user">
+                  <button
+                    v-if="user.isAnonymous"
+                    @click="linkAccount"
+                    class="bg-yellow-200 text-slate-800 px-3 py-1 rounded text-xs"
+                  >
+                    連結 Google (保留現有資料)
+                  </button>
+
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs text-gray-200 px-2"
+                      >{{ user.isAnonymous ? '匿名使用者' : user.uid }}</span
+                    >
+                    <button
+                      @click="signOutUser"
+                      class="bg-white text-slate-800 px-3 py-1 rounded text-xs shadow"
+                    >
+                      登出
+                    </button>
+                  </div>
+                </template>
+              </div>
             </div>
           </div>
         </div>
@@ -682,6 +715,10 @@
         signInWithCustomToken,
         signInAnonymously,
         onAuthStateChanged,
+        GoogleAuthProvider,
+        signInWithPopup,
+        linkWithPopup,
+        signOut,
       } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
       import {
         getFirestore,
@@ -960,6 +997,47 @@
           } catch (e) {
             console.warn("Failed to init debug panel", e);
           }
+
+          // --- Auth helper: Google sign-in & link anonymous ---
+          const provider = new GoogleAuthProvider();
+
+          const signInWithGoogle = async () => {
+            try {
+              // 若為匿名使用者，使用 linkWithPopup 保留資料並升級為 Google 帳號
+              if (auth && auth.currentUser && auth.currentUser.isAnonymous) {
+                await linkWithPopup(auth.currentUser, provider);
+                alert("已成功連結 Google 帳號並保留匿名資料。");
+              } else {
+                await signInWithPopup(auth, provider);
+              }
+            } catch (e) {
+              console.error("Google sign-in failed:", e);
+              alert("Google 登入失敗：" + (e.message || e));
+            }
+          };
+
+          const linkAccount = async () => {
+            if (!auth || !auth.currentUser) return;
+            if (!auth.currentUser.isAnonymous) {
+              alert("目前為已登入帳號，不需要連結。");
+              return;
+            }
+            try {
+              await linkWithPopup(auth.currentUser, provider);
+              alert("已成功連結 Google 帳號並保留匿名資料。");
+            } catch (e) {
+              console.error("Link failed:", e);
+              alert("連結失敗：" + (e.message || e));
+            }
+          };
+
+          const signOutUser = async () => {
+            try {
+              await signOut(auth);
+            } catch (e) {
+              console.error("Sign out failed:", e);
+            }
+          };
 
           const saveToFirestore = async () => {
             const docRef = getDocRef();
@@ -1368,6 +1446,9 @@
             deleteTransaction,
             refreshPrices,
             toggleExpand,
+            signInWithGoogle,
+            linkAccount,
+            signOutUser,
           };
         },
       }).mount("#app");
