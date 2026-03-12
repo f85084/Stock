@@ -77,34 +77,19 @@
               >
             </div>
             <div class="flex items-center gap-2 text-xs">
-              <!-- 狀態顯示 (除錯用) -->
-              <span v-if="user" class="text-green-400">已連線</span>
-              <span v-else class="text-yellow-500">請先登入</span>
-
-              <!-- Auth buttons -->
-              <div class="ml-4 flex items-center gap-2">
-                <button
-                  v-if="!user"
-                  @click="signInWithGoogle"
-                  class="bg-white text-slate-800 px-3 py-1 rounded text-xs shadow"
-                >
-                  登入 (Google)
+              <template v-if="currentUid">
+                <span class="text-green-400">已連線</span>
+                <span class="bg-slate-700 text-gray-200 px-2 py-1 rounded font-mono">{{ currentUid }}</span>
+                <button @click="switchUser" class="bg-white text-slate-800 px-3 py-1 rounded text-xs shadow hover:bg-gray-100">
+                  切換使用者
                 </button>
-
-                <template v-if="user">
-                  <div class="flex items-center gap-2">
-                    <span class="text-xs text-gray-200 px-2"
-                      >{{ user.uid }}</span
-                    >
-                    <button
-                      @click="signOutUser"
-                      class="bg-white text-slate-800 px-3 py-1 rounded text-xs shadow"
-                    >
-                      登出
-                    </button>
-                  </div>
-                </template>
-              </div>
+              </template>
+              <template v-else>
+                <span class="text-yellow-400">請先設定使用者</span>
+                <button @click="openUserModal" class="bg-white text-slate-800 px-3 py-1 rounded text-xs shadow hover:bg-gray-100">
+                  設定使用者
+                </button>
+              </template>
             </div>
           </div>
         </div>
@@ -180,7 +165,7 @@
           <div class="flex gap-2">
             <button
               @click="refreshPrices"
-              :disabled="isLoading || !user"
+              :disabled="isLoading || !currentUid"
               class="bg-blue-100 text-blue-700 hover:bg-blue-200 px-4 py-2 rounded-lg font-medium transition flex items-center gap-2 disabled:opacity-50"
             >
               <i
@@ -191,7 +176,7 @@
             </button>
             <button
               @click="openAddModal"
-              :disabled="!user"
+              :disabled="!currentUid"
               class="bg-slate-850 hover:bg-slate-700 text-white px-4 py-2 rounded-lg font-medium shadow transition flex items-center gap-2 disabled:opacity-50"
             >
               <i class="fa-solid fa-plus"></i> 新增股票
@@ -204,22 +189,17 @@
           class="bg-white rounded-xl shadow-sm overflow-hidden min-h-[300px]"
         >
           <div
-            v-if="!user"
+            v-if="!currentUid"
             class="p-12 text-center text-gray-500 flex flex-col items-center justify-center h-full"
           >
-            <i
-              class="fa-solid fa-cloud-arrow-up text-5xl mb-4 text-blue-200"
-            ></i>
-            <p class="text-lg">請先使用 Google 登入</p>
+            <i class="fa-solid fa-user-circle text-5xl mb-4 text-blue-200"></i>
+            <p class="text-lg">請先設定使用者名稱</p>
             <button
-              @click="signInWithGoogle"
+              @click="openUserModal"
               class="mt-4 bg-slate-850 hover:bg-slate-700 text-white px-4 py-2 rounded-lg font-medium shadow transition"
             >
-              登入 (Google)
+              設定使用者
             </button>
-            <p class="text-xs text-red-400 mt-2" v-if="configError">
-              請編輯 HTML 檔案，填入正確的 Firebase Config
-            </p>
           </div>
           <div
             v-else-if="portfolio.length === 0"
@@ -703,21 +683,51 @@
             </button>
           </div>
         </div>
+      <!-- 使用者設定 Modal -->
+      <div
+        v-if="showUserModal"
+        class="fixed inset-0 bg-black bg-opacity-60 z-[70] flex items-center justify-center p-4 backdrop-blur-sm"
+      >
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden">
+          <div class="px-6 py-4 bg-slate-850 text-white">
+            <h3 class="text-lg font-bold">設定使用者</h3>
+            <p class="text-xs text-gray-300 mt-1">輸入你的名稱作為帳本識別碼，相同名稱可跨裝置讀取同一份資料。</p>
+          </div>
+          <div class="p-6 space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">使用者名稱 (uid)</label>
+              <input
+                type="text"
+                v-model.trim="uidInput"
+                class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+                placeholder="例如: anna"
+                @keyup.enter="applyUid"
+              />
+              <p class="text-xs text-gray-400 mt-1">僅允許英文、數字與底線，建議小寫。</p>
+            </div>
+          </div>
+          <div class="px-6 py-4 bg-gray-50 flex justify-end gap-3">
+            <button
+              v-if="currentUid"
+              @click="showUserModal = false"
+              class="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg"
+            >
+              取消
+            </button>
+            <button
+              @click="applyUid"
+              :disabled="!uidInput"
+              class="px-4 py-2 bg-slate-850 text-white rounded-lg hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+            >
+              確認進入
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
     <script type="module">
       import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-      import {
-        getAuth,
-        signInWithCustomToken,
-        onAuthStateChanged,
-        GoogleAuthProvider,
-        signInWithPopup,
-        signOut,
-        setPersistence,
-        browserLocalPersistence,
-      } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
       import {
         getFirestore,
         doc,
@@ -745,27 +755,10 @@
 
           // --- Initialization Logic ---
           const configError = ref(false);
-          let app, auth, db;
-
-          // 判斷是否為 Canvas 預覽環境
-          const isCanvas = typeof __app_id !== "undefined";
-          const appId = isCanvas ? __app_id : "default-app-id";
+          let app, db;
 
           try {
-            // 檢查是否已填入 Config
-            if (!firebaseConfig.apiKey) {
-              // 如果沒有填入，檢查是否有全域變數 (為了相容 Canvas 預覽)
-              if (typeof __firebase_config !== "undefined") {
-                const envConfig = JSON.parse(__firebase_config);
-                app = initializeApp(envConfig);
-              } else {
-                throw new Error("No config found");
-              }
-            } else {
-              app = initializeApp(firebaseConfig);
-            }
-
-            auth = getAuth(app);
+            app = initializeApp(firebaseConfig);
             db = getFirestore(app);
           } catch (e) {
             console.error("Firebase Init Error:", e);
@@ -773,7 +766,6 @@
           }
 
           // --- State ---
-          const user = ref(null);
           const portfolio = ref([]);
           const showAddModal = ref(false);
           const isAddingBatch = ref(false);
@@ -794,57 +786,42 @@
             type: "buy",
           });
 
-          // --- Path Logic ---
-          const getDocRef = () => {
-            if (!user.value || !db) return null;
+          // --- User State ---
+          const currentUid = ref(localStorage.getItem("tw_stock_uid") || "");
+          const showUserModal = ref(false);
+          const uidInput = ref("");
 
-            if (isCanvas) {
-              // Canvas 環境：使用指定安全路徑
-              return doc(
-                db,
-                "artifacts",
-                appId,
-                "users",
-                user.value.uid,
-                "data",
-                "portfolio",
-              );
-            } else {
-              // 正式/個人環境：使用標準路徑 (更容易設定權限)
-              // 路徑: users/{uid}/stockData/portfolio
-              return doc(db, "users", user.value.uid, "stockData", "portfolio");
-            }
+          const openUserModal = () => {
+            uidInput.value = currentUid.value;
+            showUserModal.value = true;
           };
 
-          // --- Auth & Data Listeners ---
-          onMounted(async () => {
-            if (configError.value) return;
+          const applyUid = () => {
+            const val = uidInput.value.trim();
+            if (!val) return;
+            currentUid.value = val;
+            localStorage.setItem("tw_stock_uid", val);
+            showUserModal.value = false;
+          };
 
-            // 1. Auth Init
-            try {
-              await setPersistence(auth, browserLocalPersistence);
+          const switchUser = () => {
+            uidInput.value = currentUid.value;
+            showUserModal.value = true;
+          };
 
-              // 如果有自訂 Token (Canvas 環境)，則優先使用
-              if (
-                isCanvas &&
-                typeof __initial_auth_token !== "undefined" &&
-                __initial_auth_token
-              ) {
-                await signInWithCustomToken(auth, __initial_auth_token);
-              }
-            } catch (error) {
-              console.error("Auth error:", error);
+          // --- Path Logic ---
+          const getDocRef = () => {
+            if (!db || !currentUid.value) return null;
+            return doc(db, "users", currentUid.value, "stockData", "portfolio");
+          };
+
+          onMounted(() => {
+            if (!currentUid.value) {
+              showUserModal.value = true;
             }
           });
 
-          // 2. Auth Listener
-          if (auth) {
-            onAuthStateChanged(auth, (currentUser) => {
-              user.value = currentUser;
-            });
-          }
-
-          // 3. Data Listener (Wait for User)
+          // --- Data Listener ---
           watchEffect((onCleanup) => {
             const docRef = getDocRef();
             if (!docRef) return;
@@ -942,48 +919,6 @@
                 );
               };
 
-              // 顯示目前 auth 狀態與嘗試用 REST API 讀取文件（可顯示 permission 問題）
-              try {
-                onAuthStateChanged(auth, async (currentUser) => {
-                  append(
-                    "onAuthStateChanged: " +
-                      (currentUser ? currentUser.uid : "null"),
-                  );
-                  if (currentUser) {
-                    try {
-                      const token = await currentUser.getIdToken();
-                      append("idToken (prefix): " + token.slice(0, 20) + "...");
-
-                      const projectId = firebaseConfig.projectId || "";
-                      if (projectId && currentUser.uid) {
-                        const docPath = `projects/${projectId}/databases/(default)/documents/users/${currentUser.uid}/stockData/portfolio`;
-                        try {
-                          const r = await fetch(
-                            `https://firestore.googleapis.com/v1/${docPath}`,
-                            {
-                              headers: { Authorization: "Bearer " + token },
-                            },
-                          );
-                          append("Firestore REST status: " + r.status);
-                          const txt = await r.text();
-                          append("Firestore REST body: " + txt);
-                        } catch (e) {
-                          append("Firestore REST fetch failed: " + e.message);
-                        }
-                      } else {
-                        append(
-                          "Cannot form Firestore REST path (missing projectId or uid)",
-                        );
-                      }
-                    } catch (e) {
-                      append("getIdToken failed: " + e.message);
-                    }
-                  }
-                });
-              } catch (e) {
-                append("Auth debug failed: " + e.message);
-              }
-
               // 測試外部 TWSE 代理能否從手機訪問
               fetch(
                 "https://api.allorigins.win/raw?url=https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=2330.tw&json=1&delay=0",
@@ -994,26 +929,6 @@
           } catch (e) {
             console.warn("Failed to init debug panel", e);
           }
-
-          // --- Auth helper: Google sign-in & link anonymous ---
-          const provider = new GoogleAuthProvider();
-
-          const signInWithGoogle = async () => {
-            try {
-              await signInWithPopup(auth, provider);
-            } catch (e) {
-              console.error("Google sign-in failed:", e);
-              alert("Google 登入失敗：" + (e.message || e));
-            }
-          };
-
-          const signOutUser = async () => {
-            try {
-              await signOut(auth);
-            } catch (e) {
-              console.error("Sign out failed:", e);
-            }
-          };
 
           const saveToFirestore = async () => {
             const docRef = getDocRef();
@@ -1395,7 +1310,12 @@
           };
 
           return {
-            user,
+            currentUid,
+            showUserModal,
+            uidInput,
+            openUserModal,
+            applyUid,
+            switchUser,
             portfolio,
             enrichedPortfolio,
             totalMarketValue,
@@ -1425,8 +1345,6 @@
             deleteTransaction,
             refreshPrices,
             toggleExpand,
-            signInWithGoogle,
-            signOutUser,
           };
         },
       }).mount("#app");
