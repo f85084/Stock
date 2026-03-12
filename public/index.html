@@ -72,21 +72,28 @@
           <div class="flex items-center justify-between h-16">
             <div class="flex items-center gap-3">
               <i class="fa-solid fa-cloud text-2xl text-blue-400"></i>
-              <span class="font-bold text-xl tracking-wide"
-                >台股投資紀錄 (個人雲端版)</span
-              >
+              <span class="font-bold text-xl tracking-wide">資料紀錄</span>
             </div>
             <div class="flex items-center gap-2 text-xs">
               <template v-if="currentUid">
                 <span class="text-green-400">已連線</span>
-                <span class="bg-slate-700 text-gray-200 px-2 py-1 rounded font-mono">{{ currentUid }}</span>
-                <button @click="switchUser" class="bg-white text-slate-800 px-3 py-1 rounded text-xs shadow hover:bg-gray-100">
+                <span
+                  class="bg-slate-700 text-gray-200 px-2 py-1 rounded font-mono"
+                  >{{ currentUid }}</span
+                >
+                <button
+                  @click="switchUser"
+                  class="bg-white text-slate-800 px-3 py-1 rounded text-xs shadow hover:bg-gray-100"
+                >
                   切換使用者
                 </button>
               </template>
               <template v-else>
                 <span class="text-yellow-400">請先設定使用者</span>
-                <button @click="openUserModal" class="bg-white text-slate-800 px-3 py-1 rounded text-xs shadow hover:bg-gray-100">
+                <button
+                  @click="openUserModal"
+                  class="bg-white text-slate-800 px-3 py-1 rounded text-xs shadow hover:bg-gray-100"
+                >
                   設定使用者
                 </button>
               </template>
@@ -683,19 +690,27 @@
             </button>
           </div>
         </div>
+      </div>
+
       <!-- 使用者設定 Modal -->
       <div
         v-if="showUserModal"
         class="fixed inset-0 bg-black bg-opacity-60 z-[70] flex items-center justify-center p-4 backdrop-blur-sm"
       >
-        <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden">
+        <div
+          class="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden"
+        >
           <div class="px-6 py-4 bg-slate-850 text-white">
             <h3 class="text-lg font-bold">設定使用者</h3>
-            <p class="text-xs text-gray-300 mt-1">輸入你的名稱作為帳本識別碼，相同名稱可跨裝置讀取同一份資料。</p>
+            <p class="text-xs text-gray-300 mt-1">
+              輸入你的名稱作為帳本識別碼，相同名稱可跨裝置讀取同一份資料。
+            </p>
           </div>
           <div class="p-6 space-y-4">
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">使用者名稱 (uid)</label>
+              <label class="block text-sm font-medium text-gray-700 mb-1"
+                >使用者名稱 (uid)</label
+              >
               <input
                 type="text"
                 v-model.trim="uidInput"
@@ -703,7 +718,9 @@
                 placeholder="例如: anna"
                 @keyup.enter="applyUid"
               />
-              <p class="text-xs text-gray-400 mt-1">僅允許英文、數字與底線，建議小寫。</p>
+              <p class="text-xs text-gray-400 mt-1">
+                僅允許英文、數字與底線，建議小寫。
+              </p>
             </div>
           </div>
           <div class="px-6 py-4 bg-gray-50 flex justify-end gap-3">
@@ -832,20 +849,7 @@
                 if (docSnap.exists()) {
                   portfolio.value = docSnap.data().list || [];
                 } else {
-                  // 遷移: 嘗試從 LocalStorage 恢復舊資料
-                  const localData = localStorage.getItem(
-                    "tw_stock_portfolio_v2",
-                  );
-                  if (localData) {
-                    try {
-                      const parsed = JSON.parse(localData);
-                      portfolio.value = parsed;
-                      // 自動寫入新路徑
-                      setDoc(docRef, { list: parsed }).catch((e) =>
-                        console.log("Migration save failed:", e),
-                      );
-                    } catch (e) {}
-                  }
+                  portfolio.value = [];
                 }
               },
               (err) => console.error("Snapshot Error:", err),
