@@ -385,12 +385,26 @@
                       >
                     </div>
                   </div>
-                  <button
-                    @click="openAddBatchModal(stock)"
-                    class="text-xs bg-white border border-blue-200 hover:bg-blue-50 text-blue-600 px-3 py-1.5 rounded shadow-sm transition"
-                  >
-                    + 新增交易
-                  </button>
+                  <div class="flex gap-2">
+                    <button
+                      @click="refreshSingleStockPrice(stock)"
+                      :disabled="loadingStocks[stock.code]"
+                      :title="`手動更新 ${stock.name} 的股價`"
+                      class="text-xs bg-green-100 border border-green-200 hover:bg-green-50 text-green-700 disabled:bg-gray-100 disabled:text-gray-500 px-3 py-1.5 rounded shadow-sm transition flex items-center gap-1"
+                    >
+                      <i
+                        class="fa-solid fa-rotate text-xs"
+                        :class="{'animate-spin': loadingStocks[stock.code]}"
+                      ></i>
+                      更新股價
+                    </button>
+                    <button
+                      @click="openAddBatchModal(stock)"
+                      class="text-xs bg-white border border-blue-200 hover:bg-blue-50 text-blue-600 px-3 py-1.5 rounded shadow-sm transition"
+                    >
+                      + 新增交易
+                    </button>
+                  </div>
                 </div>
 
                 <div
@@ -790,6 +804,7 @@
           const isLoading = ref(false);
           const isSearching = ref(false);
           const searchMsg = ref(null);
+          const loadingStocks = ref({});
 
           const form = ref({
             code: "",
@@ -1267,6 +1282,57 @@
             isLoading.value = false;
           };
 
+          // 更新單個股票的股價
+          const refreshSingleStockPrice = async (stock) => {
+            if (!stock.fullSymbol) return;
+
+            const stockCode = stock.code;
+            loadingStocks.value[stockCode] = true;
+
+            try {
+              const results = await fetchTwseData(stock.fullSymbol);
+
+              if (results && results.length > 0) {
+                const res = results[0];
+                const price = parseFloat(res.z !== "-" ? res.z : res.y);
+                const yesterday = parseFloat(res.y);
+
+                stock.currentPrice = price;
+                if (yesterday > 0) {
+                  stock.changeRate = (
+                    ((price - yesterday) / yesterday) *
+                    100
+                  ).toFixed(2);
+                }
+
+                saveToFirestore();
+
+                // 顯示成功提示
+                searchMsg.value = {
+                  type: "success",
+                  text: `${stock.name} 股價已更新: ${price}`,
+                };
+                setTimeout(() => {
+                  searchMsg.value = null;
+                }, 3000);
+              } else {
+                // 無法取得數據
+                searchMsg.value = {
+                  type: "error",
+                  text: `無法更新 ${stock.name}，請確認網路連線。`,
+                };
+              }
+            } catch (err) {
+              console.error("更新股價失敗:", err);
+              searchMsg.value = {
+                type: "error",
+                text: `更新 ${stock.name} 失敗，請稍後再試。`,
+              };
+            } finally {
+              loadingStocks.value[stockCode] = false;
+            }
+          };
+
           // --- Transactions ---
           const saveTransaction = () => {
             let stock = portfolio.value.find((s) => s.code === form.value.code);
@@ -1334,6 +1400,7 @@
             isLoading,
             isSearching,
             searchMsg,
+            loadingStocks,
             estimateCost,
             configError,
             getDisplayTransactions,
@@ -1348,6 +1415,7 @@
             saveTransaction,
             deleteTransaction,
             refreshPrices,
+            refreshSingleStockPrice,
             toggleExpand,
           };
         },
