@@ -79,7 +79,7 @@
             <div class="flex items-center gap-2 text-xs">
               <!-- 狀態顯示 (除錯用) -->
               <span v-if="user" class="text-green-400">已連線</span>
-              <span v-else class="text-yellow-500">連線中...</span>
+              <span v-else class="text-yellow-500">請先登入</span>
 
               <!-- Auth buttons -->
               <div class="ml-4 flex items-center gap-2">
@@ -92,17 +92,9 @@
                 </button>
 
                 <template v-if="user">
-                  <button
-                    v-if="user.isAnonymous"
-                    @click="linkAccount"
-                    class="bg-yellow-200 text-slate-800 px-3 py-1 rounded text-xs"
-                  >
-                    連結 Google (保留現有資料)
-                  </button>
-
                   <div class="flex items-center gap-2">
                     <span class="text-xs text-gray-200 px-2"
-                      >{{ user.isAnonymous ? '匿名使用者' : user.uid }}</span
+                      >{{ user.uid }}</span
                     >
                     <button
                       @click="signOutUser"
@@ -218,7 +210,13 @@
             <i
               class="fa-solid fa-cloud-arrow-up text-5xl mb-4 text-blue-200"
             ></i>
-            <p class="text-lg">正在連線至雲端資料庫...</p>
+            <p class="text-lg">請先使用 Google 登入</p>
+            <button
+              @click="signInWithGoogle"
+              class="mt-4 bg-slate-850 hover:bg-slate-700 text-white px-4 py-2 rounded-lg font-medium shadow transition"
+            >
+              登入 (Google)
+            </button>
             <p class="text-xs text-red-400 mt-2" v-if="configError">
               請編輯 HTML 檔案，填入正確的 Firebase Config
             </p>
@@ -713,12 +711,9 @@
       import {
         getAuth,
         signInWithCustomToken,
-        signInAnonymously,
         onAuthStateChanged,
         GoogleAuthProvider,
         signInWithPopup,
-        linkWithPopup,
-        signInWithCredential,
         signOut,
         setPersistence,
         browserLocalPersistence,
@@ -812,7 +807,7 @@
                 "users",
                 user.value.uid,
                 "data",
-                "portfolio"
+                "portfolio",
               );
             } else {
               // 正式/個人環境：使用標準路徑 (更容易設定權限)
@@ -827,6 +822,8 @@
 
             // 1. Auth Init
             try {
+              await setPersistence(auth, browserLocalPersistence);
+
               // 如果有自訂 Token (Canvas 環境)，則優先使用
               if (
                 isCanvas &&
@@ -834,9 +831,6 @@
                 __initial_auth_token
               ) {
                 await signInWithCustomToken(auth, __initial_auth_token);
-              } else {
-                // 否則使用匿名登入 (Standalone/Formal 模式)
-                await signInAnonymously(auth);
               }
             } catch (error) {
               console.error("Auth error:", error);
@@ -863,7 +857,7 @@
                 } else {
                   // 遷移: 嘗試從 LocalStorage 恢復舊資料
                   const localData = localStorage.getItem(
-                    "tw_stock_portfolio_v2"
+                    "tw_stock_portfolio_v2",
                   );
                   if (localData) {
                     try {
@@ -871,13 +865,13 @@
                       portfolio.value = parsed;
                       // 自動寫入新路徑
                       setDoc(docRef, { list: parsed }).catch((e) =>
-                        console.log("Migration save failed:", e)
+                        console.log("Migration save failed:", e),
                       );
                     } catch (e) {}
                   }
                 }
               },
-              (err) => console.error("Snapshot Error:", err)
+              (err) => console.error("Snapshot Error:", err),
             );
 
             onCleanup(() => unsubscribe());
@@ -919,7 +913,7 @@
               append("UserAgent: " + navigator.userAgent);
               append("Location: " + window.location.href);
               append(
-                "Viewport: " + window.innerWidth + "x" + window.innerHeight
+                "Viewport: " + window.innerWidth + "x" + window.innerHeight,
               );
 
               // 將 console error/warn 顯示到面板
@@ -930,9 +924,9 @@
                   "ERROR: " +
                     args
                       .map((a) =>
-                        typeof a === "object" ? JSON.stringify(a) : a
+                        typeof a === "object" ? JSON.stringify(a) : a,
                       )
-                      .join(" ")
+                      .join(" "),
                 );
               };
               const _warn = console.warn;
@@ -942,9 +936,9 @@
                   "WARN: " +
                     args
                       .map((a) =>
-                        typeof a === "object" ? JSON.stringify(a) : a
+                        typeof a === "object" ? JSON.stringify(a) : a,
                       )
-                      .join(" ")
+                      .join(" "),
                 );
               };
 
@@ -953,7 +947,7 @@
                 onAuthStateChanged(auth, async (currentUser) => {
                   append(
                     "onAuthStateChanged: " +
-                      (currentUser ? currentUser.uid : "null")
+                      (currentUser ? currentUser.uid : "null"),
                   );
                   if (currentUser) {
                     try {
@@ -968,7 +962,7 @@
                             `https://firestore.googleapis.com/v1/${docPath}`,
                             {
                               headers: { Authorization: "Bearer " + token },
-                            }
+                            },
                           );
                           append("Firestore REST status: " + r.status);
                           const txt = await r.text();
@@ -978,7 +972,7 @@
                         }
                       } else {
                         append(
-                          "Cannot form Firestore REST path (missing projectId or uid)"
+                          "Cannot form Firestore REST path (missing projectId or uid)",
                         );
                       }
                     } catch (e) {
@@ -992,7 +986,7 @@
 
               // 測試外部 TWSE 代理能否從手機訪問
               fetch(
-                "https://api.allorigins.win/raw?url=https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=2330.tw&json=1&delay=0"
+                "https://api.allorigins.win/raw?url=https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=2330.tw&json=1&delay=0",
               )
                 .then((r) => append("TWSE proxy test status: " + r.status))
                 .catch((e) => append("TWSE proxy test failed: " + e.message));
@@ -1006,31 +1000,10 @@
 
           const signInWithGoogle = async () => {
             try {
-              // 若為匿名使用者，使用 linkWithPopup 保留資料並升級為 Google 帳號
-              if (auth && auth.currentUser && auth.currentUser.isAnonymous) {
-                await linkWithPopup(auth.currentUser, provider);
-                alert("已成功連結 Google 帳號並保留匿名資料。");
-              } else {
-                await signInWithPopup(auth, provider);
-              }
+              await signInWithPopup(auth, provider);
             } catch (e) {
               console.error("Google sign-in failed:", e);
               alert("Google 登入失敗：" + (e.message || e));
-            }
-          };
-
-          const linkAccount = async () => {
-            if (!auth || !auth.currentUser) return;
-            if (!auth.currentUser.isAnonymous) {
-              alert("目前為已登入帳號，不需要連結。");
-              return;
-            }
-            try {
-              await linkWithPopup(auth.currentUser, provider);
-              alert("已成功連結 Google 帳號並保留匿名資料。");
-            } catch (e) {
-              console.error("Link failed:", e);
-              alert("連結失敗：" + (e.message || e));
             }
           };
 
@@ -1053,11 +1026,11 @@
               // 顯示更詳細的錯誤訊息給使用者
               if (e.code === "permission-denied") {
                 alert(
-                  "儲存失敗：權限不足。\n請檢查 Firebase Console -> Firestore Database -> Rules (安全規則)，確認已允許寫入 users 集合。"
+                  "儲存失敗：權限不足。\n請檢查 Firebase Console -> Firestore Database -> Rules (安全規則)，確認已允許寫入 users 集合。",
                 );
               } else {
                 alert(
-                  `儲存失敗 (${e.code})：請檢查 console log 獲取更多資訊。`
+                  `儲存失敗 (${e.code})：請檢查 console log 獲取更多資訊。`,
                 );
               }
             }
@@ -1067,7 +1040,7 @@
           const enrichedPortfolio = computed(() => {
             return portfolio.value.map((stock) => {
               const sortedTx = [...stock.transactions].sort(
-                (a, b) => new Date(a.date) - new Date(b.date)
+                (a, b) => new Date(a.date) - new Date(b.date),
               );
 
               let inventory = 0;
@@ -1143,22 +1116,25 @@
           });
 
           const totalMarketValue = computed(() =>
-            enrichedPortfolio.value.reduce((sum, s) => sum + s.marketValue, 0)
+            enrichedPortfolio.value.reduce((sum, s) => sum + s.marketValue, 0),
           );
           const currentTotalCost = computed(() =>
-            enrichedPortfolio.value.reduce((sum, s) => sum + s.inventoryCost, 0)
+            enrichedPortfolio.value.reduce(
+              (sum, s) => sum + s.inventoryCost,
+              0,
+            ),
           );
           const totalUnrealizedProfit = computed(() =>
             enrichedPortfolio.value.reduce(
               (sum, s) => sum + s.unrealizedProfit,
-              0
-            )
+              0,
+            ),
           );
           const totalRealizedProfit = computed(() =>
             enrichedPortfolio.value.reduce(
               (sum, s) => sum + s.realizedProfit,
-              0
-            )
+              0,
+            ),
           );
           const totalReturnRate = computed(() =>
             currentTotalCost.value > 0
@@ -1166,7 +1142,7 @@
                   (totalUnrealizedProfit.value / currentTotalCost.value) *
                   100
                 ).toFixed(2)
-              : 0
+              : 0,
           );
 
           const estimateCost = computed(() => {
@@ -1179,7 +1155,7 @@
 
           const getDisplayTransactions = (stock) => {
             return [...stock.processedTransactions].sort(
-              (a, b) => new Date(b.date) - new Date(a.date)
+              (a, b) => new Date(b.date) - new Date(a.date),
             );
           };
 
@@ -1381,7 +1357,7 @@
                 fullSymbol: form.value.fullSymbol,
                 name: form.value.name,
                 currentPrice: parseFloat(
-                  form.value.currentPrice || form.value.price
+                  form.value.currentPrice || form.value.price,
                 ),
                 changeRate: 0,
                 transactions: [],
@@ -1408,11 +1384,11 @@
             const stock = portfolio.value.find((s) => s.code === code);
             if (stock) {
               stock.transactions = stock.transactions.filter(
-                (t) => t.id !== txId
+                (t) => t.id !== txId,
               );
               if (stock.transactions.length === 0)
                 portfolio.value = portfolio.value.filter(
-                  (s) => s.code !== code
+                  (s) => s.code !== code,
                 );
               saveToFirestore();
             }
@@ -1450,7 +1426,6 @@
             refreshPrices,
             toggleExpand,
             signInWithGoogle,
-            linkAccount,
             signOutUser,
           };
         },
